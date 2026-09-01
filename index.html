@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
   :root{
     --board:#182420;
@@ -201,6 +203,18 @@ const CANDIDATES = [
 ];
 const WINNING_NAMES = ["shaurya varshney", "aryan m nair"];
 
+const firebaseConfig = {
+  apiKey: "AIzaSyD4Qk6GMPhaknX6UUv2NsbQgHXG8GIeJek",
+  authDomain: "teachers-day-2026-f11f3.firebaseapp.com",
+  databaseURL: "https://teachers-day-2026-f11f3-default-rtdb.asia-southeast1.firebasedatabase.app/",
+  projectId: "teachers-day-2026-f11f3",
+  storageBucket: "teachers-day-2026-f11f3.firebasestorage.app",
+  messagingSenderId: "496044279108",
+  appId: "1:496044279108:web:4af2193867b383d9ac4311"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
 /* ---------------------------------------------------------
    STATE (in-memory only — no localStorage/sessionStorage)
 --------------------------------------------------------- */
@@ -213,7 +227,6 @@ let lastOutcome = null;
 let triggerActive = false;
 let hostDashboardBuilt = false;
 let bgFrameId = null;
-let pollTimer = null;
 let errorMsg = "";
 
 const params = new URLSearchParams(location.search);
@@ -224,39 +237,32 @@ if (urlLobby) {
 }
 
 /* ---------------------------------------------------------
-   STORAGE HELPERS (shared = true: visible to every device
-   that opens this same app link)
+   STORAGE HELPERS (Firebase Realtime Database — shared
+   across every device that opens this deployed page)
+
+   Data shape:
+     lobby/{code}            = { trigger, createdAt }
+     players/{code}/{id}     = { name, stage, votes, outcome }
 --------------------------------------------------------- */
+function lobbyRef(code) { return db.ref("lobby/" + code); }
+function playersRef(code) { return db.ref("players/" + code); }
+function playerRef(code, id) { return db.ref(`players/${code}/${id}`); }
+
 async function getLobby(code) {
   try {
-    const r = await window.storage.get("lobby:" + code, true);
-    return r ? JSON.parse(r.value) : null;
-  } catch (e) { return null; }
+    const snap = await lobbyRef(code).get();
+    return snap.exists() ? snap.val() : null;
+  } catch (e) { console.error("getLobby failed", e); return null; }
 }
 async function setLobby(code, obj) {
-  try { await window.storage.set("lobby:" + code, JSON.stringify(obj), true); }
+  try { await lobbyRef(code).set(obj); }
   catch (e) { console.error("setLobby failed", e); }
 }
-async function getRoster(code) {
-  try {
-    const r = await window.storage.get("roster:" + code, true);
-    return r ? JSON.parse(r.value) : [];
-  } catch (e) { return []; }
-}
-async function setRoster(code, arr) {
-  try { await window.storage.set("roster:" + code, JSON.stringify(arr), true); }
-  catch (e) { console.error("setRoster failed", e); }
-}
-async function getPlayer(code, id) {
-  try {
-    const r = await window.storage.get(`player:${code}:${id}`, true);
-    return r ? JSON.parse(r.value) : null;
-  } catch (e) { return null; }
-}
 async function setPlayer(code, id, obj) {
-  try { await window.storage.set(`player:${code}:${id}`, JSON.stringify(obj), true); }
+  try { await playerRef(code, id).set(obj); }
   catch (e) { console.error("setPlayer failed", e); }
 }
+
 
 function genCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -324,25 +330,27 @@ function stopBg() {
 }
 
 /* ---------------------------------------------------------
-   TRIGGER POLLING (checked continuously; only re-renders
-   when the trigger value actually changes, so it never
-   wipes out text someone is mid-typing)
+   LIVE TRIGGER LISTENER (Firebase pushes changes instantly —
+   no polling. Only re-renders a player's screen on an actual
+   change, so it never wipes out text someone is mid-typing.
+   On the host dashboard it just updates the button label.)
 --------------------------------------------------------- */
+let triggerListenerAttached = false;
+let triggerKnown = false;
 function startTriggerWatch() {
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(async () => {
-    if (!lobbyCode) return;
-    const lobby = await getLobby(lobbyCode);
-    if (!lobby) return;
-    const isLive = !!lobby.trigger;
-    if (isLive !== triggerActive) {
-      triggerActive = isLive;
+  if (triggerListenerAttached || !lobbyCode) return;
+  triggerListenerAttached = true;
+  lobbyRef(lobbyCode).child("trigger").on("value", snap => {
+    const isLive = !!snap.val();
+    const changed = !triggerKnown || isLive !== triggerActive;
+    triggerKnown = true;
+    triggerActive = isLive;
+    if (screen === "hostDashboard") {
+      setTriggerButtonState(isLive);
+    } else if (changed) {
       render();
     }
-    if (screen === "hostDashboard" && hostDashboardBuilt) {
-      updateHostDashboard();
-    }
-  }, 1500);
+  });
 }
 
 /* ---------------------------------------------------------
@@ -421,7 +429,6 @@ function renderHostPassword() {
     }
     lobbyCode = genCode();
     await setLobby(lobbyCode, { code: lobbyCode, trigger: false, createdAt: Date.now() });
-    await setRoster(lobbyCode, []);
     hostDashboardBuilt = false;
     screen = "hostDashboard";
     startTriggerWatch();
@@ -488,9 +495,6 @@ function renderEnterName() {
     if (!lobby) { err.textContent = "This room closed. Ask your host for a new code."; return; }
     playerName = name;
     await setPlayer(lobbyCode, playerId, { id: playerId, name: playerName, stage: "gate1", votes: [], outcome: null });
-    const roster = await getRoster(lobbyCode);
-    roster.push({ id: playerId, name: playerName });
-    await setRoster(lobbyCode, roster);
     screen = "gate1";
     startTriggerWatch();
     render();
@@ -655,7 +659,7 @@ function renderHostDashboard() {
 
   hostDashboardBuilt = true;
   setTriggerButtonState(false);
-  updateHostDashboard();
+  attachPlayersListener();
 }
 
 function setTriggerButtonState(live) {
@@ -669,27 +673,33 @@ function setTriggerButtonState(live) {
     : "Full-screen red on every joined screen, instantly. Press again to turn it off.";
 }
 
-async function updateHostDashboard() {
-  if (!lobbyCode) return;
-  const roster = await getRoster(lobbyCode);
+/* Live-updates the player list the instant anyone's stage
+   changes anywhere — no polling needed. */
+let playersListenerAttached = false;
+function attachPlayersListener() {
+  if (playersListenerAttached || !lobbyCode) return;
+  playersListenerAttached = true;
+  playersRef(lobbyCode).on("value", snap => {
+    const playersObj = snap.exists() ? snap.val() : {};
+    updateHostDashboard(playersObj);
+  });
+}
+
+function updateHostDashboard(playersObj) {
   const countTag = document.getElementById("countTag");
   const listEl = document.getElementById("playerList");
   if (!listEl) return;
-  if (countTag) countTag.textContent = `(${roster.length})`;
-  if (roster.length === 0) {
+  const players = Object.values(playersObj || {});
+  if (countTag) countTag.textContent = `(${players.length})`;
+  if (players.length === 0) {
     listEl.innerHTML = `<div class="empty-note">Waiting for people to join…</div>`;
     return;
   }
-  const players = await Promise.all(roster.map(r => getPlayer(lobbyCode, r.id)));
   const stageLabel = { gate1: "Stage 1", gate2: "Stage 2", vote: "Voting", result: "Done" };
-  listEl.innerHTML = players.map((p, i) => {
-    const name = p ? p.name : roster[i].name;
-    const stage = p ? (stageLabel[p.stage] || p.stage) : "Joining…";
-    return `<div class="player-row"><span>${name}</span><span class="stage-tag">${stage}</span></div>`;
+  listEl.innerHTML = players.map(p => {
+    const stage = stageLabel[p.stage] || p.stage || "Joining…";
+    return `<div class="player-row"><span>${p.name}</span><span class="stage-tag">${stage}</span></div>`;
   }).join("");
-
-  const lobby = await getLobby(lobbyCode);
-  if (lobby) setTriggerButtonState(!!lobby.trigger);
 }
 
 /* ---------------------------------------------------------
