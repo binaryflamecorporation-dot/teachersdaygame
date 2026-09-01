@@ -25,7 +25,7 @@
     --radius:14px;
   }
   *{box-sizing:border-box;}
-  html,body{height:100%;}
+  html,body{min-height:100%;}
   body{
     margin:0;
     min-height:100%;
@@ -175,11 +175,16 @@
     text-transform:uppercase;
   }
 
-  /* trigger overlay: "rangrez" monologue */
-  .trigger-overlay-rangrez{
-    position:fixed;inset:0;z-index:999;
+  /* rangrez monologue — now a normal in-flow waiting screen, shown
+     automatically after gate 2, not a host-triggered overlay */
+  .rangrez-screen{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
     background:radial-gradient(ellipse at 50% 40%, #2a2a2a 0%, #050505 75%);
-    display:flex;align-items:center;justify-content:center;
+    border-radius:var(--radius);
+    margin:-8px -20px 0;
     padding:32px 26px;
     overflow-y:auto;
     animation:drain 4s infinite ease-in-out;
@@ -203,7 +208,7 @@
   .top-brand .leaf{color:var(--marker);}
   @media (prefers-reduced-motion: reduce){
     .trigger-overlay{animation:none;background:var(--danger);}
-    .trigger-overlay-rangrez{animation:none;}
+    .rangrez-screen{animation:none;}
     *{animation-duration:.01ms !important;}
   }
 </style>
@@ -265,7 +270,7 @@ let playerId = "p_" + Math.random().toString(36).slice(2, 10);
 let playerName = "";
 let selectedVotes = [];
 let lastOutcome = null;
-let activeTrigger = null; // null | "lying" | "rangrez"
+let activeTrigger = null; // null | "lying" | "voting"
 let hostDashboardBuilt = false;
 let bgFrameId = null;
 let errorMsg = "";
@@ -403,22 +408,19 @@ function render() {
   stopBg();
   errorMsg = "";
 
-  if (activeTrigger && screen !== "hostDashboard") {
-    if (activeTrigger === "lying") {
-      app.innerHTML = `
-        <div class="trigger-overlay">
-          <div class="trigger-text">He is lying</div>
-        </div>`;
-    } else if (activeTrigger === "rangrez") {
-      app.innerHTML = `
-        <div class="trigger-overlay-rangrez">
-          <div class="rangrez-inner">
-            <div class="rangrez-mark">— Rangrez —</div>
-            <div class="rangrez-text">${RANGREZ_MESSAGE}</div>
-          </div>
-        </div>`;
-    }
+  if (activeTrigger === "lying" && screen !== "hostDashboard") {
+    app.innerHTML = `
+      <div class="trigger-overlay">
+        <div class="trigger-text">He is lying</div>
+      </div>`;
     return;
+  }
+
+  // Host-triggered voting: only pulls in players currently waiting on
+  // the rangrez screen. Anyone already past voting (e.g. on "result")
+  // stays put, since their underlying screen no longer matches.
+  if (activeTrigger === "voting" && screen === "rangrez") {
+    return renderVote();
   }
 
   if (screen === "landing") return renderLanding();
@@ -427,6 +429,7 @@ function render() {
   if (screen === "enterName") return renderEnterName();
   if (screen === "gate1") return renderGate("gate1");
   if (screen === "gate2") return renderGate("gate2");
+  if (screen === "rangrez") return renderRangrez();
   if (screen === "vote") return renderVote();
   if (screen === "result") return renderResult();
   if (screen === "hostDashboard") return renderHostDashboard();
@@ -598,12 +601,27 @@ function renderGate(which) {
       await setPlayer(lobbyCode, playerId, { id: playerId, name: playerName, stage: "gate2", votes: [], outcome: null });
       screen = "gate2";
     } else {
-      await setPlayer(lobbyCode, playerId, { id: playerId, name: playerName, stage: "vote", votes: [], outcome: null });
-      screen = "vote";
+      await setPlayer(lobbyCode, playerId, { id: playerId, name: playerName, stage: "rangrez", votes: [], outcome: null });
+      screen = "rangrez";
     }
     render();
   };
   input.addEventListener("keydown", e => { if (e.key === "Enter" && !goBtn.disabled) goBtn.click(); });
+}
+
+/* ---- Rangrez monologue (auto, after gate 2 — waits for host to
+        trigger voting) ---- */
+function renderRangrez() {
+  app.innerHTML = `
+    ${brandRow()}
+    <div class="rangrez-screen">
+      <div class="rangrez-inner">
+        <div class="rangrez-mark">— Rangrez —</div>
+        <div class="rangrez-text">${RANGREZ_MESSAGE}</div>
+      </div>
+    </div>
+    <div class="helper-text" style="text-align:center;margin-top:16px;"><span class="pulse-dot"></span>Stay on this screen — the room isn't done yet.</div>
+  `;
 }
 
 /* ---- Voting ---- */
@@ -694,8 +712,8 @@ function renderHostDashboard() {
       <div class="helper-text" id="triggerLyingHelp">Full-screen red on every joined screen, instantly. Press again to turn it off.</div>
     </div>
     <div style="margin-top:18px;">
-      <button class="btn-danger" id="triggerRangrezBtn">Trigger: Rangrez message</button>
-      <div class="helper-text" id="triggerRangrezHelp">Full-screen dark monologue on every joined screen. Press again to turn it off.</div>
+      <button class="btn-danger" id="triggerVotingBtn">Trigger: Voting</button>
+      <div class="helper-text" id="triggerVotingHelp">Moves everyone waiting on the Rangrez screen into voting. Press again to turn it off.</div>
     </div>
   `;
   // eslint-disable-next-line no-undef
@@ -705,7 +723,7 @@ function renderHostDashboard() {
   });
 
   document.getElementById("triggerLyingBtn").onclick = () => toggleTrigger("lying");
-  document.getElementById("triggerRangrezBtn").onclick = () => toggleTrigger("rangrez");
+  document.getElementById("triggerVotingBtn").onclick = () => toggleTrigger("voting");
 
   hostDashboardBuilt = true;
   setTriggerButtonState(null);
@@ -724,9 +742,9 @@ async function toggleTrigger(type) {
 function setTriggerButtonState(type) {
   const lyingBtn = document.getElementById("triggerLyingBtn");
   const lyingHelp = document.getElementById("triggerLyingHelp");
-  const rangrezBtn = document.getElementById("triggerRangrezBtn");
-  const rangrezHelp = document.getElementById("triggerRangrezHelp");
-  if (!lyingBtn || !rangrezBtn) return;
+  const votingBtn = document.getElementById("triggerVotingBtn");
+  const votingHelp = document.getElementById("triggerVotingHelp");
+  if (!lyingBtn || !votingBtn) return;
 
   const lyingLive = type === "lying";
   lyingBtn.textContent = lyingLive ? "Turn it off" : "Trigger: He is lying";
@@ -735,12 +753,12 @@ function setTriggerButtonState(type) {
     ? "Every screen is red right now. Press to release the room."
     : "Full-screen red on every joined screen, instantly. Press again to turn it off.";
 
-  const rangrezLive = type === "rangrez";
-  rangrezBtn.textContent = rangrezLive ? "Turn it off" : "Trigger: Rangrez message";
-  rangrezBtn.classList.toggle("is-live", rangrezLive);
-  rangrezHelp.textContent = rangrezLive
-    ? "The Rangrez message is live right now. Press to release the room."
-    : "Full-screen dark monologue on every joined screen. Press again to turn it off.";
+  const votingLive = type === "voting";
+  votingBtn.textContent = votingLive ? "Turn it off" : "Trigger: Voting";
+  votingBtn.classList.toggle("is-live", votingLive);
+  votingHelp.textContent = votingLive
+    ? "Voting is live right now. Press to release the room."
+    : "Moves everyone waiting on the Rangrez screen into voting. Press again to turn it off.";
 }
 
 /* Live-updates the player list the instant anyone's stage
@@ -765,7 +783,7 @@ function updateHostDashboard(playersObj) {
     listEl.innerHTML = `<div class="empty-note">Waiting for people to join…</div>`;
     return;
   }
-  const stageLabel = { gate1: "Stage 1", gate2: "Stage 2", vote: "Voting", result: "Done" };
+  const stageLabel = { gate1: "Stage 1", gate2: "Stage 2", rangrez: "Waiting", vote: "Voting", result: "Done" };
   listEl.innerHTML = players.map(p => {
     const stage = stageLabel[p.stage] || p.stage || "Joining…";
     return `<div class="player-row"><span>${p.name}</span><span class="stage-tag">${stage}</span></div>`;
