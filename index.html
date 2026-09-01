@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Teachers Day — The Hearing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{
+    --board:#182420;
+    --board-2:#1f302a;
+    --panel:#233933;
+    --panel-line:#3a544c;
+    --chalk:#eee7d6;
+    --chalk-dim:#b9c4bd;
+    --marker:#e7b93f;
+    --marker-dim:#8a7332;
+    --sage:#6f9384;
+    --danger:#d7263d;
+    --danger-deep:#8c0f22;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    min-height:100%;
+    background:
+      radial-gradient(ellipse at 20% -10%, #24382f 0%, transparent 55%),
+      radial-gradient(ellipse at 100% 110%, #1c2b25 0%, transparent 55%),
+      var(--board);
+    color:var(--chalk);
+    font-family:'Inter',sans-serif;
+    display:flex;
+    justify-content:center;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{
+    width:100%;
+    max-width:480px;
+    min-height:100vh;
+    padding:28px 20px 40px;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+  h1,h2,h3{font-family:'Caveat',cursive;font-weight:700;margin:0 0 6px;line-height:1.05;}
+  .eyebrow{color:var(--sage);font-size:13px;letter-spacing:.02em;margin-bottom:2px;}
+  .lede{color:var(--chalk-dim);font-size:15px;line-height:1.5;margin:0 0 22px;}
+  .stage-title{font-size:44px;color:var(--chalk);}
+  .card{
+    background:var(--panel);
+    border:1px solid var(--panel-line);
+    border-radius:var(--radius);
+    padding:20px;
+  }
+  .field{width:100%;margin-top:18px;}
+  .field label{display:block;font-size:13px;color:var(--sage);margin-bottom:7px;}
+  input[type=text],input[type=password]{
+    width:100%;
+    background:var(--board-2);
+    border:1.5px solid var(--panel-line);
+    color:var(--chalk);
+    font-family:'Inter',sans-serif;
+    font-size:17px;
+    padding:13px 14px;
+    border-radius:10px;
+    outline:none;
+    transition:border-color .15s ease;
+  }
+  input[type=text]:focus,input[type=password]:focus{border-color:var(--marker);}
+  input::placeholder{color:#6a7d75;}
+  button{
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:15px;
+    border:none;
+    border-radius:10px;
+    padding:13px 18px;
+    cursor:pointer;
+    transition:transform .1s ease, opacity .15s ease, background .15s ease;
+  }
+  button:active{transform:scale(0.97);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-primary{background:var(--marker);color:#1c1505;width:100%;margin-top:20px;}
+  .btn-primary:disabled{background:var(--marker-dim);color:#cbb877;}
+  .btn-ghost{background:transparent;border:1.5px solid var(--panel-line);color:var(--chalk);width:100%;}
+  .btn-danger{background:var(--danger);color:#fff;width:100%;}
+  .btn-danger.is-live{background:var(--danger-deep);}
+  .error-text{color:#ef8a8a;font-size:13.5px;margin-top:10px;min-height:1em;}
+  .helper-text{color:var(--chalk-dim);font-size:13px;margin-top:10px;min-height:1em;}
+  .stack{display:flex;flex-direction:column;gap:12px;margin-top:22px;}
+  .center{margin:auto 0;text-align:center;}
+  .grow{flex:1;display:flex;flex-direction:column;justify-content:center;}
+
+  /* landing role buttons */
+  .role-btn{
+    text-align:left;
+    background:var(--panel);
+    border:1.5px solid var(--panel-line);
+    border-radius:var(--radius);
+    padding:18px;
+    color:var(--chalk);
+  }
+  .role-btn strong{display:block;font-size:18px;margin-bottom:3px;font-family:'Caveat',cursive;font-size:26px;}
+  .role-btn span{display:block;color:var(--chalk-dim);font-size:13.5px;}
+  .role-btn:hover{border-color:var(--marker);}
+  .link-btn{background:none;border:none;color:var(--sage);text-decoration:underline;padding:6px 0;width:auto;font-size:14px;}
+
+  /* particle gate background */
+  .gate-wrap{position:relative;flex:1;display:flex;flex-direction:column;justify-content:center;min-height:70vh;margin:-8px -20px 0;padding:0 20px;overflow:hidden;border-radius:var(--radius);}
+  canvas#bgCanvas{position:absolute;inset:0;width:100%;height:100%;z-index:0;}
+  .gate-content{position:relative;z-index:2;}
+  .gate-content .card{background:rgba(24,36,32,0.72);backdrop-filter:blur(2px);}
+
+  /* lobby / QR */
+  .code-pill{
+    display:inline-block;
+    font-family:'Caveat',cursive;
+    font-size:34px;
+    letter-spacing:.06em;
+    background:var(--board-2);
+    border:1.5px dashed var(--marker-dim);
+    color:var(--marker);
+    padding:6px 18px;
+    border-radius:10px;
+  }
+  #qrHolder{background:#fff;padding:14px;border-radius:12px;display:inline-block;line-height:0;}
+  .player-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--panel-line);font-size:14.5px;}
+  .player-row:last-child{border-bottom:none;}
+  .stage-tag{font-size:11px;color:var(--sage);text-transform:none;background:var(--board-2);padding:3px 8px;border-radius:20px;}
+  .empty-note{color:var(--chalk-dim);font-size:14px;padding:8px 0;}
+
+  /* voting */
+  .candidate{
+    display:flex;align-items:center;gap:12px;
+    background:var(--panel);border:1.5px solid var(--panel-line);
+    border-radius:12px;padding:13px 14px;margin-top:10px;cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .candidate.picked{border-color:var(--marker);background:#2c4038;}
+  .candidate .dot{width:20px;height:20px;border-radius:50%;border:2px solid var(--panel-line);flex-shrink:0;transition:.15s ease;}
+  .candidate.picked .dot{background:var(--marker);border-color:var(--marker);}
+  .candidate .name{font-size:15.5px;font-weight:500;}
+  .pick-counter{color:var(--sage);font-size:13px;margin-top:14px;text-align:center;}
+
+  /* result */
+  .verdict{font-size:64px;text-align:center;margin:10px 0 6px;}
+  .verdict.win{color:var(--marker);}
+  .verdict.lose{color:#ef8a8a;}
+  .picks-summary{color:var(--chalk-dim);font-size:14.5px;text-align:center;line-height:1.6;}
+  .pulse-dot{width:8px;height:8px;border-radius:50%;background:var(--sage);display:inline-block;margin-right:7px;animation:pulse 1.4s infinite ease-in-out;}
+  @keyframes pulse{0%,100%{opacity:.3;}50%{opacity:1;}}
+
+  /* trigger overlay */
+  .trigger-overlay{
+    position:fixed;inset:0;z-index:999;
+    background:var(--danger);
+    display:flex;align-items:center;justify-content:center;
+    animation:flash 1s infinite;
+    padding:20px;
+  }
+  @keyframes flash{0%,100%{background:#d7263d;}50%{background:#a30f24;}}
+  .trigger-text{
+    font-family:'Inter',sans-serif;
+    font-weight:800;
+    font-size:clamp(38px,12vw,72px);
+    color:#fff;
+    text-align:center;
+    letter-spacing:.02em;
+    text-transform:uppercase;
+  }
+
+  .top-brand{display:flex;align-items:center;gap:8px;color:var(--sage);font-size:12.5px;margin-bottom:26px;}
+  .top-brand .leaf{color:var(--marker);}
+  @media (prefers-reduced-motion: reduce){
+    .trigger-overlay{animation:none;background:var(--danger);}
+    *{animation-duration:.01ms !important;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ---------------------------------------------------------
+   CONFIG
+--------------------------------------------------------- */
+const HOST_PASSWORD = "teachersday";
+const GATE1_ANSWER = "rangless";
+const GATE2_ANSWER = "the two of the hosts";
+const CANDIDATES = [
+  "Shaurya Varshney",
+  "Ayantik Nayak",
+  "Aryan M Nair",
+  "Samvit Smaran",
+  "Aahana Yadav",
+  "Rohan Malhotra"
+];
+const WINNING_NAMES = ["shaurya varshney", "aryan m nair"];
+
+/* ---------------------------------------------------------
+   STATE (in-memory only — no localStorage/sessionStorage)
+--------------------------------------------------------- */
+let screen = "landing";
+let lobbyCode = null;
+let playerId = "p_" + Math.random().toString(36).slice(2, 10);
+let playerName = "";
+let selectedVotes = [];
+let lastOutcome = null;
+let triggerActive = false;
+let hostDashboardBuilt = false;
+let bgFrameId = null;
+let pollTimer = null;
+let errorMsg = "";
+
+const params = new URLSearchParams(location.search);
+const urlLobby = params.get("lobby");
+if (urlLobby) {
+  lobbyCode = urlLobby.toUpperCase();
+  screen = "enterName";
+}
+
+/* ---------------------------------------------------------
+   STORAGE HELPERS (shared = true: visible to every device
+   that opens this same app link)
+--------------------------------------------------------- */
+async function getLobby(code) {
+  try {
+    const r = await window.storage.get("lobby:" + code, true);
+    return r ? JSON.parse(r.value) : null;
+  } catch (e) { return null; }
+}
+async function setLobby(code, obj) {
+  try { await window.storage.set("lobby:" + code, JSON.stringify(obj), true); }
+  catch (e) { console.error("setLobby failed", e); }
+}
+async function getRoster(code) {
+  try {
+    const r = await window.storage.get("roster:" + code, true);
+    return r ? JSON.parse(r.value) : [];
+  } catch (e) { return []; }
+}
+async function setRoster(code, arr) {
+  try { await window.storage.set("roster:" + code, JSON.stringify(arr), true); }
+  catch (e) { console.error("setRoster failed", e); }
+}
+async function getPlayer(code, id) {
+  try {
+    const r = await window.storage.get(`player:${code}:${id}`, true);
+    return r ? JSON.parse(r.value) : null;
+  } catch (e) { return null; }
+}
+async function setPlayer(code, id, obj) {
+  try { await window.storage.set(`player:${code}:${id}`, JSON.stringify(obj), true); }
+  catch (e) { console.error("setPlayer failed", e); }
+}
+
+function genCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 4; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+/* ---------------------------------------------------------
+   BACKGROUND PARTICLE ANIMATION (for the gate screens)
+--------------------------------------------------------- */
+function startBg(canvasId) {
+  stopBg();
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  let w, h;
+  function resize() {
+    w = canvas.width = canvas.offsetWidth * devicePixelRatio;
+    h = canvas.height = canvas.offsetHeight * devicePixelRatio;
+  }
+  resize();
+  window.addEventListener("resize", resize);
+
+  const N = 46;
+  const dots = Array.from({ length: N }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    r: (Math.random() * 1.6 + 0.6) * devicePixelRatio,
+    vx: (Math.random() - 0.5) * 0.0006,
+    vy: (Math.random() - 0.5) * 0.0006,
+    a: Math.random() * 0.5 + 0.15
+  }));
+  let t = 0;
+  function frame() {
+    t += 0.006;
+    ctx.clearRect(0, 0, w, h);
+    const grad = ctx.createRadialGradient(
+      w * (0.5 + 0.15 * Math.sin(t * 0.4)), h * (0.4 + 0.1 * Math.cos(t * 0.3)), 0,
+      w * 0.5, h * 0.5, Math.max(w, h) * 0.7
+    );
+    grad.addColorStop(0, "rgba(111,147,132,0.20)");
+    grad.addColorStop(1, "rgba(24,36,32,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    dots.forEach(d => {
+      d.x += d.vx; d.y += d.vy;
+      if (d.x < 0 || d.x > 1) d.vx *= -1;
+      if (d.y < 0 || d.y > 1) d.vy *= -1;
+      ctx.beginPath();
+      ctx.arc(d.x * w, d.y * h, d.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(231,185,63,${d.a})`;
+      ctx.fill();
+    });
+    bgFrameId = requestAnimationFrame(frame);
+  }
+  frame();
+  canvas._cleanupResize = () => window.removeEventListener("resize", resize);
+}
+function stopBg() {
+  if (bgFrameId) { cancelAnimationFrame(bgFrameId); bgFrameId = null; }
+  const c = document.getElementById("bgCanvas");
+  if (c && c._cleanupResize) c._cleanupResize();
+}
+
+/* ---------------------------------------------------------
+   TRIGGER POLLING (checked continuously; only re-renders
+   when the trigger value actually changes, so it never
+   wipes out text someone is mid-typing)
+--------------------------------------------------------- */
+function startTriggerWatch() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    if (!lobbyCode) return;
+    const lobby = await getLobby(lobbyCode);
+    if (!lobby) return;
+    const isLive = !!lobby.trigger;
+    if (isLive !== triggerActive) {
+      triggerActive = isLive;
+      render();
+    }
+    if (screen === "hostDashboard" && hostDashboardBuilt) {
+      updateHostDashboard();
+    }
+  }, 1500);
+}
+
+/* ---------------------------------------------------------
+   RENDER
+--------------------------------------------------------- */
+const app = document.getElementById("app");
+
+function render() {
+  stopBg();
+  errorMsg = "";
+
+  if (triggerActive && screen !== "hostDashboard") {
+    app.innerHTML = `
+      <div class="trigger-overlay">
+        <div class="trigger-text">He is lying</div>
+      </div>`;
+    return;
+  }
+
+  if (screen === "landing") return renderLanding();
+  if (screen === "hostPassword") return renderHostPassword();
+  if (screen === "joinCode") return renderJoinCode();
+  if (screen === "enterName") return renderEnterName();
+  if (screen === "gate1") return renderGate("gate1");
+  if (screen === "gate2") return renderGate("gate2");
+  if (screen === "vote") return renderVote();
+  if (screen === "result") return renderResult();
+  if (screen === "hostDashboard") return renderHostDashboard();
+}
+
+function brandRow() {
+  return `<div class="top-brand"><span class="leaf">🍏</span> Teachers Day — The Hearing</div>`;
+}
+
+/* ---- Landing ---- */
+function renderLanding() {
+  app.innerHTML = `
+    ${brandRow()}
+    <div class="grow">
+      <div class="eyebrow">Before the bell</div>
+      <h1 class="stage-title">Someone here isn't telling the truth.</h1>
+      <p class="lede">Set up the room, or join with the code a host gave you.</p>
+      <div class="stack">
+        <button class="role-btn" id="hostBtn"><strong>Run the room</strong><span>Host login — creates the lobby &amp; QR code</span></button>
+        <button class="role-btn" id="joinBtn"><strong>Join a room</strong><span>Enter a lobby code from your host</span></button>
+      </div>
+    </div>
+  `;
+  document.getElementById("hostBtn").onclick = () => { screen = "hostPassword"; render(); };
+  document.getElementById("joinBtn").onclick = () => { screen = "joinCode"; render(); };
+}
+
+/* ---- Host password ---- */
+function renderHostPassword() {
+  app.innerHTML = `
+    ${brandRow()}
+    <div class="grow">
+      <div class="eyebrow">Host access</div>
+      <h1 class="stage-title">Open the room</h1>
+      <p class="lede">This creates a new lobby and a QR code the room can scan.</p>
+      <div class="field">
+        <label for="pw">Host password</label>
+        <input type="password" id="pw" placeholder="Enter password" autofocus>
+      </div>
+      <div class="error-text" id="err"></div>
+      <button class="btn-primary" id="goBtn">Open lobby</button>
+      <button class="link-btn" id="backBtn">Back</button>
+    </div>
+  `;
+  const pw = document.getElementById("pw");
+  const err = document.getElementById("err");
+  document.getElementById("goBtn").onclick = async () => {
+    if (pw.value !== HOST_PASSWORD) {
+      err.textContent = "That's not it. Try again.";
+      return;
+    }
+    lobbyCode = genCode();
+    await setLobby(lobbyCode, { code: lobbyCode, trigger: false, createdAt: Date.now() });
+    await setRoster(lobbyCode, []);
+    hostDashboardBuilt = false;
+    screen = "hostDashboard";
+    startTriggerWatch();
+    render();
+  };
+  pw.addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("goBtn").click(); });
+  document.getElementById("backBtn").onclick = () => { screen = "landing"; render(); };
+}
+
+/* ---- Join with typed code ---- */
+function renderJoinCode() {
+  app.innerHTML = `
+    ${brandRow()}
+    <div class="grow">
+      <div class="eyebrow">Join a room</div>
+      <h1 class="stage-title">Got a lobby code?</h1>
+      <p class="lede">Ask your host, or scan their QR code instead.</p>
+      <div class="field">
+        <label for="code">Lobby code</label>
+        <input type="text" id="code" placeholder="e.g. 7K2Q" autofocus style="text-transform:uppercase;letter-spacing:.08em;">
+      </div>
+      <div class="error-text" id="err"></div>
+      <button class="btn-primary" id="goBtn">Continue</button>
+      <button class="link-btn" id="backBtn">Back</button>
+    </div>
+  `;
+  const codeInput = document.getElementById("code");
+  const err = document.getElementById("err");
+  document.getElementById("goBtn").onclick = async () => {
+    const c = codeInput.value.trim().toUpperCase();
+    if (!c) { err.textContent = "Enter a code first."; return; }
+    const lobby = await getLobby(c);
+    if (!lobby) { err.textContent = "No room with that code. Check with your host."; return; }
+    lobbyCode = c;
+    screen = "enterName";
+    render();
+  };
+  codeInput.addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("goBtn").click(); });
+  document.getElementById("backBtn").onclick = () => { screen = "landing"; render(); };
+}
+
+/* ---- Enter name & join ---- */
+function renderEnterName() {
+  app.innerHTML = `
+    ${brandRow()}
+    <div class="grow">
+      <div class="eyebrow">Room ${lobbyCode || ""}</div>
+      <h1 class="stage-title">Who's asking?</h1>
+      <p class="lede">Your name only appears to the host, to track who's checked in.</p>
+      <div class="field">
+        <label for="nm">Your name</label>
+        <input type="text" id="nm" placeholder="Full name" autofocus>
+      </div>
+      <div class="error-text" id="err"></div>
+      <button class="btn-primary" id="goBtn">Check in</button>
+    </div>
+  `;
+  const nm = document.getElementById("nm");
+  const err = document.getElementById("err");
+  document.getElementById("goBtn").onclick = async () => {
+    const name = nm.value.trim();
+    if (!name) { err.textContent = "Enter your name to continue."; return; }
+    const lobby = await getLobby(lobbyCode);
+    if (!lobby) { err.textContent = "This room closed. Ask your host for a new code."; return; }
+    playerName = name;
+    await setPlayer(lobbyCode, playerId, { id: playerId, name: playerName, stage: "gate1", votes: [], outcome: null });
+    const roster = await getRoster(lobbyCode);
+    roster.push({ id: playerId, name: playerName });
+    await setRoster(lobbyCode, roster);
+    screen = "gate1";
+    startTriggerWatch();
+    render();
+  };
+  nm.addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("goBtn").click(); });
+}
+
+/* ---- Gate screens (shared renderer for gate1 / gate2) ---- */
+function renderGate(which) {
+  const isFirst = which === "gate1";
+  const heading = isFirst ? "Say the word." : "Finish the thought.";
+  const sub = isFirst
+    ? "Something's been said in this room. Repeat it exactly to go on."
+    : "One phrase is being passed around. Type it out, word for word.";
+  app.innerHTML = `
+    ${brandRow()}
+    <div class="gate-wrap">
+      <canvas id="bgCanvas"></canvas>
+      <div class="gate-content">
+        <div class="eyebrow">${isFirst ? "Stage 1 of 2" : "Stage 2 of 2"}</div>
+        <h1 class="stage-title">${heading}</h1>
+        <p class="lede">${sub}</p>
+        <div class="card">
+          <div class="field" style="margin-top:0;">
+            <label for="gateInput">Type it here</label>
+            <input type="text" id="gateInput" autocomplete="off" autofocus>
+          </div>
+          <div class="error-text" id="err"></div>
+        </div>
+        <button class="btn-primary" id="goBtn" disabled>Continue</button>
+      </div>
+    </div>
+  `;
+  startBg("bgCanvas");
+  const input = document.getElementById("gateInput");
+  const err = document.getElementById("err");
+  const goBtn = document.getElementById("goBtn");
+  const target = isFirst ? GATE1_ANSWER : GATE2_ANSWER;
+
+  function matches() {
+    return input.value.trim().toLowerCase() === target;
+  }
+  input.addEventListener("input", () => {
+    goBtn.disabled = !matches();
+    err.textContent = "";
+  });
+  goBtn.onclick = async () => {
+    if (!matches()) { err.textContent = "Not quite right. Look closer."; return; }
+    if (isFirst) {
+      await setPlayer(lobbyCode, playerId, { id: playerId, name: playerName, stage: "gate2", votes: [], outcome: null });
+      screen = "gate2";
+    } else {
+      await setPlayer(lobbyCode, playerId, { id: playerId, name: playerName, stage: "vote", votes: [], outcome: null });
+      screen = "vote";
+    }
+    render();
+  };
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && !goBtn.disabled) goBtn.click(); });
+}
+
+/* ---- Voting ---- */
+function renderVote() {
+  app.innerHTML = `
+    ${brandRow()}
+    <div class="grow">
+      <div class="eyebrow">Final stage</div>
+      <h1 class="stage-title">Who looks suspicious to you?</h1>
+      <p class="lede">Pick exactly two names. Choose carefully — you can't undo this.</p>
+      <div id="candidateList"></div>
+      <div class="pick-counter" id="counter">0 of 2 selected</div>
+      <button class="btn-primary" id="submitBtn" disabled>Lock in my two</button>
+    </div>
+  `;
+  const list = document.getElementById("candidateList");
+  const counter = document.getElementById("counter");
+  const submitBtn = document.getElementById("submitBtn");
+
+  CANDIDATES.forEach(name => {
+    const row = document.createElement("div");
+    row.className = "candidate";
+    row.innerHTML = `<div class="dot"></div><div class="name">${name}</div>`;
+    row.onclick = () => {
+      const idx = selectedVotes.indexOf(name);
+      if (idx >= 0) {
+        selectedVotes.splice(idx, 1);
+        row.classList.remove("picked");
+      } else {
+        if (selectedVotes.length >= 2) return;
+        selectedVotes.push(name);
+        row.classList.add("picked");
+      }
+      counter.textContent = `${selectedVotes.length} of 2 selected`;
+      submitBtn.disabled = selectedVotes.length !== 2;
+    };
+    list.appendChild(row);
+  });
+
+  submitBtn.onclick = async () => {
+    const normalized = selectedVotes.map(n => n.toLowerCase());
+    const won = normalized.some(n => WINNING_NAMES.includes(n));
+    lastOutcome = won ? "win" : "lose";
+    await setPlayer(lobbyCode, playerId, {
+      id: playerId, name: playerName, stage: "result",
+      votes: selectedVotes.slice(), outcome: lastOutcome
+    });
+    screen = "result";
+    render();
+  };
+}
+
+/* ---- Result ---- */
+function renderResult() {
+  const win = lastOutcome === "win";
+  app.innerHTML = `
+    ${brandRow()}
+    <div class="grow center">
+      <div class="eyebrow">Your verdict</div>
+      <div class="verdict ${win ? "win" : "lose"}">${win ? "You win" : "You lose"}</div>
+      <p class="picks-summary">You pointed the finger at<br><strong>${selectedVotes[0]}</strong> and <strong>${selectedVotes[1]}</strong>.</p>
+      <div class="helper-text" style="margin-top:34px;"><span class="pulse-dot"></span>Stay on this screen — the room isn't done yet.</div>
+    </div>
+  `;
+}
+
+/* ---- Host dashboard (built once, then patched in place so
+        the QR canvas + inputs never get wiped by polling) ---- */
+function renderHostDashboard() {
+  const joinUrl = `${location.origin}${location.pathname}?lobby=${lobbyCode}`;
+  app.innerHTML = `
+    ${brandRow()}
+    <div class="eyebrow">Room is open</div>
+    <h1 class="stage-title">Lobby ${lobbyCode}</h1>
+    <p class="lede">Have the room scan this, or type the code in at the join screen.</p>
+    <div class="center" style="margin-bottom:6px;">
+      <div id="qrHolder"></div>
+    </div>
+    <div class="center" style="margin-bottom:22px;">
+      <span class="code-pill">${lobbyCode}</span>
+    </div>
+    <div class="card">
+      <h3 style="font-size:20px;margin-bottom:10px;">Checked in <span id="countTag">(0)</span></h3>
+      <div id="playerList"><div class="empty-note">Waiting for people to join…</div></div>
+    </div>
+    <div style="margin-top:28px;">
+      <button class="btn-danger" id="triggerBtn">Trigger: He is lying</button>
+      <div class="helper-text" id="triggerHelp">Full-screen red on every joined screen, instantly. Press again to turn it off.</div>
+    </div>
+  `;
+  // eslint-disable-next-line no-undef
+  new QRCode(document.getElementById("qrHolder"), {
+    text: joinUrl, width: 200, height: 200,
+    colorDark: "#182420", colorLight: "#ffffff"
+  });
+
+  document.getElementById("triggerBtn").onclick = async () => {
+    const lobby = await getLobby(lobbyCode) || { code: lobbyCode };
+    const next = !lobby.trigger;
+    await setLobby(lobbyCode, { ...lobby, trigger: next });
+    triggerActive = next;
+    setTriggerButtonState(next);
+  };
+
+  hostDashboardBuilt = true;
+  setTriggerButtonState(false);
+  updateHostDashboard();
+}
+
+function setTriggerButtonState(live) {
+  const btn = document.getElementById("triggerBtn");
+  const help = document.getElementById("triggerHelp");
+  if (!btn) return;
+  btn.textContent = live ? "Turn it off" : "Trigger: He is lying";
+  btn.classList.toggle("is-live", live);
+  if (help) help.textContent = live
+    ? "Every screen is red right now. Press to release the room."
+    : "Full-screen red on every joined screen, instantly. Press again to turn it off.";
+}
+
+async function updateHostDashboard() {
+  if (!lobbyCode) return;
+  const roster = await getRoster(lobbyCode);
+  const countTag = document.getElementById("countTag");
+  const listEl = document.getElementById("playerList");
+  if (!listEl) return;
+  if (countTag) countTag.textContent = `(${roster.length})`;
+  if (roster.length === 0) {
+    listEl.innerHTML = `<div class="empty-note">Waiting for people to join…</div>`;
+    return;
+  }
+  const players = await Promise.all(roster.map(r => getPlayer(lobbyCode, r.id)));
+  const stageLabel = { gate1: "Stage 1", gate2: "Stage 2", vote: "Voting", result: "Done" };
+  listEl.innerHTML = players.map((p, i) => {
+    const name = p ? p.name : roster[i].name;
+    const stage = p ? (stageLabel[p.stage] || p.stage) : "Joining…";
+    return `<div class="player-row"><span>${name}</span><span class="stage-tag">${stage}</span></div>`;
+  }).join("");
+
+  const lobby = await getLobby(lobbyCode);
+  if (lobby) setTriggerButtonState(!!lobby.trigger);
+}
+
+/* ---------------------------------------------------------
+   BOOT
+--------------------------------------------------------- */
+if (lobbyCode) startTriggerWatch();
+render();
+</script>
+</body>
+</html>
