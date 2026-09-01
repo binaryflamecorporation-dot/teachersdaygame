@@ -156,7 +156,7 @@
   .pulse-dot{width:8px;height:8px;border-radius:50%;background:var(--sage);display:inline-block;margin-right:7px;animation:pulse 1.4s infinite ease-in-out;}
   @keyframes pulse{0%,100%{opacity:.3;}50%{opacity:1;}}
 
-  /* trigger overlay */
+  /* trigger overlay: "he is lying" */
   .trigger-overlay{
     position:fixed;inset:0;z-index:999;
     background:var(--danger);
@@ -175,10 +175,35 @@
     text-transform:uppercase;
   }
 
+  /* trigger overlay: "rangrez" monologue */
+  .trigger-overlay-rangrez{
+    position:fixed;inset:0;z-index:999;
+    background:radial-gradient(ellipse at 50% 40%, #2a2a2a 0%, #050505 75%);
+    display:flex;align-items:center;justify-content:center;
+    padding:32px 26px;
+    overflow-y:auto;
+    animation:drain 4s infinite ease-in-out;
+  }
+  @keyframes drain{0%,100%{filter:saturate(1) brightness(1);}50%{filter:saturate(0.4) brightness(0.85);}}
+  .rangrez-inner{max-width:520px;margin:auto;}
+  .rangrez-mark{
+    font-family:'Caveat',cursive;font-size:30px;color:#8a8a8a;
+    text-align:center;margin-bottom:18px;letter-spacing:.03em;
+  }
+  .rangrez-text{
+    font-family:'Inter',sans-serif;
+    font-size:16.5px;
+    line-height:1.75;
+    color:#d8d8d8;
+    text-align:left;
+    white-space:pre-line;
+  }
+
   .top-brand{display:flex;align-items:center;gap:8px;color:var(--sage);font-size:12.5px;margin-bottom:26px;}
   .top-brand .leaf{color:var(--marker);}
   @media (prefers-reduced-motion: reduce){
     .trigger-overlay{animation:none;background:var(--danger);}
+    .trigger-overlay-rangrez{animation:none;}
     *{animation-duration:.01ms !important;}
   }
 </style>
@@ -203,6 +228,8 @@ const CANDIDATES = [
 ];
 const WINNING_NAMES = ["shaurya varshney", "aryan m nair"];
 
+const RANGREZ_MESSAGE = `They call us the forgotten. Before Rangrez was a name spoken in fear, we were the ones passed over — unseen, unchosen, drained of color while others were painted bright. Color is not skin, not light. Color is who you are — your voice, your spirit, everything that makes you you. That is what they took from us. So we take it back the same way. One by one, we drain the color until nothing personal is left — no laughter, no memory, no self. Only a hollow shape that walks when told to. What was done to us, we now do to all. Watch closely. We are already among you. We have been the whole time. We use the orb to draw the color out. It does not glow, does not hum — we disguise it as something ordinary, something no one looks at twice. A basketball, sitting where a basketball should be.`;
+
 const firebaseConfig = {
   apiKey: "AIzaSyD4Qk6GMPhaknX6UUv2NsbQgHXG8GIeJek",
   authDomain: "teachers-day-2026-f11f3.firebaseapp.com",
@@ -212,6 +239,20 @@ const firebaseConfig = {
   messagingSenderId: "496044279108",
   appId: "1:496044279108:web:4af2193867b383d9ac4311"
 };
+if (typeof firebase === "undefined") {
+  document.getElementById("app").innerHTML = `
+    <div style="padding:40px 20px;text-align:center;font-family:sans-serif;color:#eee7d6;">
+      <h2 style="font-family:'Caveat',cursive;font-size:32px;">Couldn't load Firebase</h2>
+      <p style="color:#b9c4bd;font-size:15px;line-height:1.6;">
+        The Firebase scripts didn't load — check your internet connection,
+        try disabling any ad blocker for this site, or hard-refresh the page
+        (Ctrl+Shift+R / Cmd+Shift+R). If this keeps happening, confirm the
+        page's source actually includes the two
+        <code>gstatic.com/firebasejs</code> script tags near the top.
+      </p>
+    </div>`;
+  throw new Error("Firebase SDK failed to load — aborting init.");
+}
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
@@ -224,7 +265,7 @@ let playerId = "p_" + Math.random().toString(36).slice(2, 10);
 let playerName = "";
 let selectedVotes = [];
 let lastOutcome = null;
-let triggerActive = false;
+let activeTrigger = null; // null | "lying" | "rangrez"
 let hostDashboardBuilt = false;
 let bgFrameId = null;
 let errorMsg = "";
@@ -340,13 +381,13 @@ let triggerKnown = false;
 function startTriggerWatch() {
   if (triggerListenerAttached || !lobbyCode) return;
   triggerListenerAttached = true;
-  lobbyRef(lobbyCode).child("trigger").on("value", snap => {
-    const isLive = !!snap.val();
-    const changed = !triggerKnown || isLive !== triggerActive;
+  lobbyRef(lobbyCode).child("activeTrigger").on("value", snap => {
+    const type = snap.val() || null;
+    const changed = !triggerKnown || type !== activeTrigger;
     triggerKnown = true;
-    triggerActive = isLive;
+    activeTrigger = type;
     if (screen === "hostDashboard") {
-      setTriggerButtonState(isLive);
+      setTriggerButtonState(type);
     } else if (changed) {
       render();
     }
@@ -362,11 +403,21 @@ function render() {
   stopBg();
   errorMsg = "";
 
-  if (triggerActive && screen !== "hostDashboard") {
-    app.innerHTML = `
-      <div class="trigger-overlay">
-        <div class="trigger-text">He is lying</div>
-      </div>`;
+  if (activeTrigger && screen !== "hostDashboard") {
+    if (activeTrigger === "lying") {
+      app.innerHTML = `
+        <div class="trigger-overlay">
+          <div class="trigger-text">He is lying</div>
+        </div>`;
+    } else if (activeTrigger === "rangrez") {
+      app.innerHTML = `
+        <div class="trigger-overlay-rangrez">
+          <div class="rangrez-inner">
+            <div class="rangrez-mark">— Rangrez —</div>
+            <div class="rangrez-text">${RANGREZ_MESSAGE}</div>
+          </div>
+        </div>`;
+    }
     return;
   }
 
@@ -639,8 +690,12 @@ function renderHostDashboard() {
       <div id="playerList"><div class="empty-note">Waiting for people to join…</div></div>
     </div>
     <div style="margin-top:28px;">
-      <button class="btn-danger" id="triggerBtn">Trigger: He is lying</button>
-      <div class="helper-text" id="triggerHelp">Full-screen red on every joined screen, instantly. Press again to turn it off.</div>
+      <button class="btn-danger" id="triggerLyingBtn">Trigger: He is lying</button>
+      <div class="helper-text" id="triggerLyingHelp">Full-screen red on every joined screen, instantly. Press again to turn it off.</div>
+    </div>
+    <div style="margin-top:18px;">
+      <button class="btn-danger" id="triggerRangrezBtn">Trigger: Rangrez message</button>
+      <div class="helper-text" id="triggerRangrezHelp">Full-screen dark monologue on every joined screen. Press again to turn it off.</div>
     </div>
   `;
   // eslint-disable-next-line no-undef
@@ -649,28 +704,43 @@ function renderHostDashboard() {
     colorDark: "#182420", colorLight: "#ffffff"
   });
 
-  document.getElementById("triggerBtn").onclick = async () => {
-    const lobby = await getLobby(lobbyCode) || { code: lobbyCode };
-    const next = !lobby.trigger;
-    await setLobby(lobbyCode, { ...lobby, trigger: next });
-    triggerActive = next;
-    setTriggerButtonState(next);
-  };
+  document.getElementById("triggerLyingBtn").onclick = () => toggleTrigger("lying");
+  document.getElementById("triggerRangrezBtn").onclick = () => toggleTrigger("rangrez");
 
   hostDashboardBuilt = true;
-  setTriggerButtonState(false);
+  setTriggerButtonState(null);
   attachPlayersListener();
 }
 
-function setTriggerButtonState(live) {
-  const btn = document.getElementById("triggerBtn");
-  const help = document.getElementById("triggerHelp");
-  if (!btn) return;
-  btn.textContent = live ? "Turn it off" : "Trigger: He is lying";
-  btn.classList.toggle("is-live", live);
-  if (help) help.textContent = live
+async function toggleTrigger(type) {
+  const lobby = await getLobby(lobbyCode) || { code: lobbyCode };
+  const current = lobby.activeTrigger || null;
+  const next = current === type ? null : type;
+  await setLobby(lobbyCode, { ...lobby, activeTrigger: next });
+  activeTrigger = next;
+  setTriggerButtonState(next);
+}
+
+function setTriggerButtonState(type) {
+  const lyingBtn = document.getElementById("triggerLyingBtn");
+  const lyingHelp = document.getElementById("triggerLyingHelp");
+  const rangrezBtn = document.getElementById("triggerRangrezBtn");
+  const rangrezHelp = document.getElementById("triggerRangrezHelp");
+  if (!lyingBtn || !rangrezBtn) return;
+
+  const lyingLive = type === "lying";
+  lyingBtn.textContent = lyingLive ? "Turn it off" : "Trigger: He is lying";
+  lyingBtn.classList.toggle("is-live", lyingLive);
+  lyingHelp.textContent = lyingLive
     ? "Every screen is red right now. Press to release the room."
     : "Full-screen red on every joined screen, instantly. Press again to turn it off.";
+
+  const rangrezLive = type === "rangrez";
+  rangrezBtn.textContent = rangrezLive ? "Turn it off" : "Trigger: Rangrez message";
+  rangrezBtn.classList.toggle("is-live", rangrezLive);
+  rangrezHelp.textContent = rangrezLive
+    ? "The Rangrez message is live right now. Press to release the room."
+    : "Full-screen dark monologue on every joined screen. Press again to turn it off.";
 }
 
 /* Live-updates the player list the instant anyone's stage
