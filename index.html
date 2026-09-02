@@ -132,7 +132,10 @@
   #qrHolder{background:#fff;padding:14px;border-radius:12px;display:inline-block;line-height:0;}
   .player-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--panel-line);font-size:14.5px;}
   .player-row:last-child{border-bottom:none;}
+  .player-row-clickable{cursor:pointer;transition:opacity .15s;}
+  .player-row-clickable:active{opacity:0.6;}
   .stage-tag{font-size:11px;color:var(--sage);text-transform:none;background:var(--board-2);padding:3px 8px;border-radius:20px;}
+  .stage-tag-cohost{color:#182420;background:var(--marker);font-weight:600;}
   .empty-note{color:var(--chalk-dim);font-size:14px;padding:8px 0;}
 
   /* voting */
@@ -225,13 +228,13 @@ const GATE1_ANSWER = "rangless";
 const GATE2_ANSWER = "the two of the hosts";
 const CANDIDATES = [
   "Shaurya Varshney",
-  "Ayantik Nayek",
+  "Ayantik Nayak",
   "Aryan M Nair",
   "Samvit Smaran",
-  "Lakshay Mittal",
-  "Jayesh Kayat"
+  "Aahana Yadav",
+  "Rohan Malhotra"
 ];
-const WINNING_NAMES = ["shaurya varshney", "Ayantik Nayek"];
+const WINNING_NAMES = ["shaurya varshney", "aryan m nair"];
 
 const RANGREZ_MESSAGE = `They call us the forgotten. Before Rangrez was a name spoken in fear, we were the ones passed over — unseen, unchosen, drained of color while others were painted bright. Color is not skin, not light. Color is who you are — your voice, your spirit, everything that makes you you. That is what they took from us. So we take it back the same way. One by one, we drain the color until nothing personal is left — no laughter, no memory, no self. Only a hollow shape that walks when told to. What was done to us, we now do to all. Watch closely. We are already among you. We have been the whole time. We use the orb to draw the color out. It does not glow, does not hum — we disguise it as something ordinary, something no one looks at twice. A basketball, sitting where a basketball should be.`;
 
@@ -274,6 +277,8 @@ let activeTrigger = null; // null | "lying" | "voting"
 let hostDashboardBuilt = false;
 let bgFrameId = null;
 let errorMsg = "";
+let isCohost = false;
+let preInviteScreen = null; // screen to restore to if the co-host invite is declined
 
 const params = new URLSearchParams(location.search);
 const urlLobby = params.get("lobby");
@@ -293,6 +298,13 @@ if (urlLobby) {
 function lobbyRef(code) { return db.ref("lobby/" + code); }
 function playersRef(code) { return db.ref("players/" + code); }
 function playerRef(code, id) { return db.ref(`players/${code}/${id}`); }
+// Co-host invites/roster live under their own top-level paths, on
+// purpose — players/ and lobby/ nodes get overwritten wholesale with
+// .set() elsewhere, which would otherwise wipe these out mid-flight.
+function cohostInvitesRef(code) { return db.ref("cohostInvites/" + code); }
+function cohostInviteRef(code, id) { return db.ref(`cohostInvites/${code}/${id}`); }
+function cohostsRef(code) { return db.ref("cohosts/" + code); }
+function cohostRef(code, id) { return db.ref(`cohosts/${code}/${id}`); }
 
 async function getLobby(code) {
   try {
@@ -400,6 +412,26 @@ function startTriggerWatch() {
 }
 
 /* ---------------------------------------------------------
+   CO-HOST INVITE LISTENER (player side) — the moment the host
+   taps this player in the "Checked in" list, this flips true
+   and interrupts whatever screen the player is on with an
+   accept/decline prompt, taking priority over everything else.
+--------------------------------------------------------- */
+let cohostInviteListenerAttached = false;
+function startCohostInviteWatch() {
+  if (cohostInviteListenerAttached || !lobbyCode || !playerId) return;
+  cohostInviteListenerAttached = true;
+  cohostInviteRef(lobbyCode, playerId).on("value", snap => {
+    const invited = snap.val() === true;
+    if (invited && !isCohost && screen !== "cohostPrompt") {
+      preInviteScreen = screen;
+      screen = "cohostPrompt";
+      render();
+    }
+  });
+}
+
+/* ---------------------------------------------------------
    RENDER
 --------------------------------------------------------- */
 const app = document.getElementById("app");
@@ -407,6 +439,11 @@ const app = document.getElementById("app");
 function render() {
   stopBg();
   errorMsg = "";
+
+  // Co-host invite prompt interrupts absolutely everything else —
+  // including "He is lying" and voting — since it's a direct,
+  // time-sensitive ask from the host to a specific person.
+  if (screen === "cohostPrompt") return renderCohostPrompt();
 
   if (activeTrigger === "lying" && screen !== "hostDashboard") {
     app.innerHTML = `
@@ -434,7 +471,6 @@ function render() {
   if (screen === "result") return renderResult();
   if (screen === "hostDashboard") return renderHostDashboard();
 }
-
 function brandRow() {
   return `<div class="top-brand"><span class="leaf">🍏</span> Teachers Day — The Hearing</div>`;
 }
@@ -551,6 +587,7 @@ function renderEnterName() {
     await setPlayer(lobbyCode, playerId, { id: playerId, name: playerName, stage: "gate1", votes: [], outcome: null });
     screen = "gate1";
     startTriggerWatch();
+    startCohostInviteWatch();
     render();
   };
   nm.addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("goBtn").click(); });
@@ -622,6 +659,38 @@ function renderRangrez() {
     </div>
     <div class="helper-text" style="text-align:center;margin-top:16px;"><span class="pulse-dot"></span>Stay on this screen — the room isn't done yet.</div>
   `;
+}
+
+/* ---- Co-host invite (interrupts any screen the instant the
+        host taps this player) ---- */
+function renderCohostPrompt() {
+  app.innerHTML = `
+    ${brandRow()}
+    <div class="grow">
+      <div class="eyebrow">Direct request from the host</div>
+      <h1 class="stage-title">Become a co-host?</h1>
+      <p class="lede">You'll get the same screen the host has — the QR code, the live check-in list, and both triggers.</p>
+      <div class="error-text" id="err"></div>
+      <button class="btn-primary" id="acceptBtn">Accept</button>
+      <button class="link-btn" id="declineBtn">Decline</button>
+    </div>
+  `;
+  document.getElementById("acceptBtn").onclick = async () => {
+    isCohost = true;
+    await cohostInviteRef(lobbyCode, playerId).set(false);
+    await cohostRef(lobbyCode, playerId).set({ name: playerName });
+    hostDashboardBuilt = false;
+    screen = "hostDashboard";
+    preInviteScreen = null;
+    startTriggerWatch();
+    render();
+  };
+  document.getElementById("declineBtn").onclick = async () => {
+    await cohostInviteRef(lobbyCode, playerId).set(false);
+    screen = preInviteScreen || "rangrez";
+    preInviteScreen = null;
+    render();
+  };
 }
 
 /* ---- Voting ---- */
@@ -706,6 +775,7 @@ function renderHostDashboard() {
     <div class="card">
       <h3 style="font-size:20px;margin-bottom:10px;">Checked in <span id="countTag">(0)</span></h3>
       <div id="playerList"><div class="empty-note">Waiting for people to join…</div></div>
+      <div class="helper-text" style="margin-top:10px;">Tap anyone to invite them as a co-host — they'll get the same dashboard you have, the instant they accept.</div>
     </div>
     <div style="margin-top:28px;">
       <button class="btn-danger" id="triggerLyingBtn">Trigger: He is lying</button>
@@ -761,23 +831,35 @@ function setTriggerButtonState(type) {
     : "Moves everyone waiting on the Rangrez screen into voting. Press again to turn it off.";
 }
 
-/* Live-updates the player list the instant anyone's stage
-   changes anywhere — no polling needed. */
+/* Live-updates the player list the instant anyone's stage,
+   co-host status, or invite state changes anywhere — no
+   polling needed. */
 let playersListenerAttached = false;
+let latestPlayersObj = {};
+let latestCohostsObj = {};
+let latestInvitesObj = {};
 function attachPlayersListener() {
   if (playersListenerAttached || !lobbyCode) return;
   playersListenerAttached = true;
   playersRef(lobbyCode).on("value", snap => {
-    const playersObj = snap.exists() ? snap.val() : {};
-    updateHostDashboard(playersObj);
+    latestPlayersObj = snap.exists() ? snap.val() : {};
+    updateHostDashboard();
+  });
+  cohostsRef(lobbyCode).on("value", snap => {
+    latestCohostsObj = snap.exists() ? snap.val() : {};
+    updateHostDashboard();
+  });
+  cohostInvitesRef(lobbyCode).on("value", snap => {
+    latestInvitesObj = snap.exists() ? snap.val() : {};
+    updateHostDashboard();
   });
 }
 
-function updateHostDashboard(playersObj) {
+function updateHostDashboard() {
   const countTag = document.getElementById("countTag");
   const listEl = document.getElementById("playerList");
   if (!listEl) return;
-  const players = Object.values(playersObj || {});
+  const players = Object.values(latestPlayersObj || {});
   if (countTag) countTag.textContent = `(${players.length})`;
   if (players.length === 0) {
     listEl.innerHTML = `<div class="empty-note">Waiting for people to join…</div>`;
@@ -785,15 +867,33 @@ function updateHostDashboard(playersObj) {
   }
   const stageLabel = { gate1: "Stage 1", gate2: "Stage 2", rangrez: "Waiting", vote: "Voting", result: "Done" };
   listEl.innerHTML = players.map(p => {
-    const stage = stageLabel[p.stage] || p.stage || "Joining…";
-    return `<div class="player-row"><span>${p.name}</span><span class="stage-tag">${stage}</span></div>`;
+    const cohosted = !!latestCohostsObj[p.id];
+    const pending = !!latestInvitesObj[p.id];
+    const clickable = !cohosted && !pending;
+    let tagHtml;
+    if (cohosted) {
+      tagHtml = `<span class="stage-tag stage-tag-cohost">★ Co-host</span>`;
+    } else if (pending) {
+      tagHtml = `<span class="stage-tag">Invite sent…</span>`;
+    } else {
+      tagHtml = `<span class="stage-tag">${stageLabel[p.stage] || p.stage || "Joining…"}</span>`;
+    }
+    return `<div class="player-row${clickable ? " player-row-clickable" : ""}" data-pid="${p.id}"><span>${p.name}</span>${tagHtml}</div>`;
   }).join("");
+
+  listEl.querySelectorAll(".player-row-clickable").forEach(row => {
+    row.onclick = () => inviteCohost(row.dataset.pid);
+  });
+}
+
+async function inviteCohost(targetPlayerId) {
+  await cohostInviteRef(lobbyCode, targetPlayerId).set(true);
 }
 
 /* ---------------------------------------------------------
    BOOT
 --------------------------------------------------------- */
-if (lobbyCode) startTriggerWatch();
+if (lobbyCode) { startTriggerWatch(); startCohostInviteWatch(); }
 render();
 </script>
 </body>
